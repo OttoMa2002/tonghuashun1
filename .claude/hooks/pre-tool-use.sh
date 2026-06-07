@@ -49,7 +49,7 @@ case "$tool_name" in
     fi
 
     # 5) 补丁/恢复类命令可改写任意路径,绕过写动词检测(T00 实测盲区,人工补强)
-    if printf '%s' "$cmd" | grep -qE '\bgit[[:space:]]+apply\b|(^|[;&|[:space:]])patch[[:space:]]'; then
+    if printf '%s' "$cmd" | grep -qE '(^|[;&|][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)git[[:space:]]+apply\b|(^|[;&|][[:space:]]*)patch[[:space:]]'; then
       deny "(harness 只读 ADR-0008):git apply / patch 可绕过路径写保护,一律由人工执行。"
     fi
     if printf '%s' "$cmd" | grep -qE '\bgit[[:space:]]+(checkout|restore)\b[^|;&]*(CLAUDE\.md|\.claude/|package\.json|pnpm-lock\.yaml|tsconfig[^[:space:]]*\.json|eslint\.config|\.eslintrc)'; then
