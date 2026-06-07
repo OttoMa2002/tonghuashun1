@@ -69,6 +69,23 @@ while :; do
   prompt="执行 plan.md 的 $task,仅此一个任务,按 task-protocol skill 全流程执行(领取→实现→DoD→pnpm gate 绿灯→commit→更新状态)。"
   log "[runner] 调用 claude -p,输出 tee 到 $task_log"
   claude -p "$prompt" 2>&1 | tee "$task_log"
+  claude_rc=${PIPESTATUS[0]}
+
+  # 中断处理:claude -p 非零退出(额度耗尽 / 网络中断 / 执行内部错误)即停止整个循环,
+  # 保留现场——不改任务状态、不领取下一个任务,以非零退出码结束。恢复由人工检查 git status 后决定。
+  if [ "$claude_rc" -ne 0 ]; then
+    {
+      echo
+      echo "===== [runner] 中断:claude -p 非零退出(exit $claude_rc)====="
+      echo "时间:$(date '+%F %T')"
+      echo "可能原因:额度耗尽 / 网络中断 / 执行内部错误。"
+      echo "已停止整个领取循环并保留现场:不改任务状态、不领取下一个任务。"
+      echo "恢复:请人工检查 git status 后,决定是否重试 $task。"
+    } | tee -a "$task_log"
+    log "[runner] 中断:$task 的 claude -p 以 exit $claude_rc 结束,停止循环、保留现场,非零退出。"
+    exit "$claude_rc"
+  fi
+
   if [ "$(status_of "$task")" = "todo" ]; then
     log "[runner] 警告:$task 执行后状态仍为 todo,停止以免死循环。"
     exit 1

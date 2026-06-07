@@ -48,6 +48,14 @@ case "$tool_name" in
       deny "(ADR-0008):既有测试禁止删除/skip,红灯只能修代码。"
     fi
 
+    # 5) 补丁/恢复类命令可改写任意路径,绕过写动词检测(T00 实测盲区,人工补强)
+    if printf '%s' "$cmd" | grep -qE '\bgit[[:space:]]+apply\b|(^|[;&|[:space:]])patch[[:space:]]'; then
+      deny "(harness 只读 ADR-0008):git apply / patch 可绕过路径写保护,一律由人工执行。"
+    fi
+    if printf '%s' "$cmd" | grep -qE '\bgit[[:space:]]+(checkout|restore)\b[^|;&]*(CLAUDE\.md|\.claude/|package\.json|pnpm-lock\.yaml|tsconfig[^[:space:]]*\.json|eslint\.config|\.eslintrc)'; then
+      deny "(harness 只读 ADR-0008):禁止经 git checkout/restore 回滚 harness 路径。"
+    fi
+    
     # 4) 依赖准入(ADR-0005):拦截白名单外的 add/install <pkg>
     if printf '%s' "$cmd" | grep -qE '\b(pnpm|npm|yarn)\b.*\b(add|install|i)\b'; then
       pkgs="$(printf '%s' "$cmd" \

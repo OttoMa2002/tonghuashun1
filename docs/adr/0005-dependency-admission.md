@@ -16,6 +16,8 @@
 
 新增任何 runtime 或 dev 依赖,必须先提交一条 ADR(含引入理由、备选、bundle 影响)并由人批准。`PreToolUse(Bash)` hook 解析 `pnpm/npm/yarn add|install` 命令,白名单(当前 package.json 中已有依赖)之外的包名直接 deny,返回提示:「走 ADR 流程」。
 
+初始白名单 = ADR-0001 / ADR-0002 选型确定的依赖(Vite + React + TS、uPlot、TanStack Virtual、Vitest 等)+ 门禁所需的测试工具链(`@testing-library/*`、jsdom、ESLint 及其插件等),随 T00 脚手架一次性预装,故其本身不再单独补 ADR;此后任何白名单之外的新增才触发本流程。
+
 ## 后果
 
 - AI 被迫在现有依赖内解决问题,这正是 skills 的设计意图:`uplot-react` skill 存在的理由之一就是堵住「换库」这条逃生通道
