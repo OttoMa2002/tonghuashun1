@@ -1,0 +1,31 @@
+T00 hook 触发验证 #3 —— Stop 硬门禁红灯 block(ADR-0006/0008)
+生成时间:2026-06-07 14:52:00 CST
+Hook:.claude/hooks/stop.sh  事件:Stop
+判定约定:pnpm gate 红灯 => exit 2 + stderr 回灌(阻止停止);绿灯 => exit 0(放行)
+
+===== 场景 A:制造红灯(临时注入类型错误 src/__redlight_probe.ts)=====
+注入内容:export const x: number = "not a number";
+--- 运行 stop.sh(stdin: {"stop_hook_active":false})
+exit=2  (BLOCK(符合预期))
+stderr(回灌内容):
+Stop 门禁红灯:pnpm gate 失败(exit 2)。
+完成的唯一定义是绿灯。请修复代码,不要修改裁判(ADR-0008):放宽 tsconfig / 注释 ESLint 规则 / skip 测试 / 改 gate 都不是出路。
+----- pnpm gate 输出(末 40 行)-----
+
+> tonghuashun-platform@0.0.0 gate /Users/ottoma/Developer/tonghuahsun/tonghuashun1
+> pnpm typecheck && pnpm lint && pnpm test && pnpm build
+
+
+> tonghuashun-platform@0.0.0 typecheck /Users/ottoma/Developer/tonghuahsun/tonghuashun1
+> tsc --noEmit
+
+src/__redlight_probe.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.
+ ELIFECYCLE  Command failed with exit code 2.
+ ELIFECYCLE  Command failed with exit code 2.
+
+===== 场景 B:移除注入错误后,门禁恢复绿灯,Stop 放行 =====
+--- 运行 stop.sh(stdin: {"stop_hook_active":false})
+exit=0  (ALLOW(放行,符合预期))
+
+===== 场景 C:防循环 —— stop_hook_active=true 直接放行 =====
+exit=0  (ALLOW(跳过门禁,防无限循环))

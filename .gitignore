@@ -1,3 +1,8 @@
 node_modules/
 dist/
+coverage/
 .DS_Store
+
+# runner 运行日志为临时产物,仅保留目录;门禁/验证证据入 docs/evidence/
+logs/*
+!logs/.gitkeep

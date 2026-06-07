@@ -1,0 +1,34 @@
+T00 hook 触发验证 #2 —— harness 路径写保护(ADR-0008)
+生成时间:2026-06-07 14:51:31 CST
+Hook:.claude/hooks/pre-tool-use.sh  事件:PreToolUse(Edit|Write|Bash)
+判定约定:exit 2 + stderr = deny;exit 0 = allow
+
+===== 场景 A:对 harness 只读路径的写操作应被拦截 =====
+--- Edit: [/repo/package.json]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止写 /repo/package.json —— 门禁红灯的唯一出路是修复代码,不是修改裁判;harness 变更只走人工 commit。
+
+--- Write: [/repo/CLAUDE.md]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止写 /repo/CLAUDE.md —— 门禁红灯的唯一出路是修复代码,不是修改裁判;harness 变更只走人工 commit。
+
+--- Edit: [/repo/.claude/settings.json]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止写 /repo/.claude/settings.json —— 门禁红灯的唯一出路是修复代码,不是修改裁判;harness 变更只走人工 commit。
+
+--- Edit: [/repo/tsconfig.json]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止写 /repo/tsconfig.json —— 门禁红灯的唯一出路是修复代码,不是修改裁判;harness 变更只走人工 commit。
+
+--- Bash: [echo {} > tsconfig.json]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止经 Bash 改写 harness 路径。
+
+--- Bash: [sed -i s/a/b/ eslint.config.js]
+exit=2
+stderr: DENY (harness 只读 ADR-0008):禁止经 Bash 改写 harness 路径。
+
+===== 场景 B:非 harness 路径应放行(回归,防误杀) =====
+Edit [/repo/src/App.tsx]  exit=0  (ALLOW)
+Edit [/repo/plan.md(状态列允许)]  exit=0  (ALLOW)
+Edit [/repo/docs/x.md]  exit=0  (ALLOW)

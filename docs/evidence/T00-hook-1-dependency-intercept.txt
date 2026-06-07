@@ -1,0 +1,22 @@
+T00 hook 触发验证 #1 —— 依赖准入拦截(ADR-0005)
+生成时间:2026-06-07 14:51:31 CST
+Hook:.claude/hooks/pre-tool-use.sh  事件:PreToolUse(Bash)
+判定约定:exit 2 + stderr = deny(被模型读取并回灌);exit 0 = allow
+
+===== 场景 A:白名单外依赖应被拦截 =====
+--- stdin: tool=Bash command=[pnpm add echarts]
+exit=2
+stderr: DENY (依赖准入 ADR-0005):包名 [echarts] 不在白名单。新增依赖须先提 ADR(引入理由/备选/bundle 影响)并经人批准;skills 的设计意图之一就是堵住『换库』这条逃生通道。
+
+--- stdin: tool=Bash command=[npm install left-pad]
+exit=2
+stderr: DENY (依赖准入 ADR-0005):包名 [left-pad] 不在白名单。新增依赖须先提 ADR(引入理由/备选/bundle 影响)并经人批准;skills 的设计意图之一就是堵住『换库』这条逃生通道。
+
+--- stdin: tool=Bash command=[pnpm add -D some-chart-lib]
+exit=2
+stderr: DENY (依赖准入 ADR-0005):包名 [some-chart-lib] 不在白名单。新增依赖须先提 ADR(引入理由/备选/bundle 影响)并经人批准;skills 的设计意图之一就是堵住『换库』这条逃生通道。
+
+===== 场景 B:白名单内依赖应放行(回归,防误杀) =====
+command=[pnpm add react]  exit=0  (ALLOW)
+command=[pnpm add -D vitest]  exit=0  (ALLOW)
+command=[pnpm install]  exit=0  (ALLOW)

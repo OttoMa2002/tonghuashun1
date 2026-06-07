@@ -12,7 +12,7 @@
 
 | ID | 任务 | 依赖 | 状态 |
 |---|---|---|---|
-| T00 | Harness bootstrap(人工监督) | - | todo |
+| T00 | Harness bootstrap(人工监督) | - | done |
 | T01 | data-contract.md + 契约类型(人工审定) | T00 | todo |
 | T02 | mock:时序生成器 | T01 | todo |
 | T03 | mock:query_range 实现 | T02 | todo |
