@@ -42,9 +42,11 @@ export function TimeSeriesChart({ frame, options, className }: TimeSeriesChartPr
       if (!entry) {
         return;
       }
-      const { width, height } = entry.contentRect;
-      // 尺寸变化走 setSize,绝不重建(uplot-react 反例 3)。容器尺寸为 0 时退回选项初值。
-      plot.setSize({ width: width || options.width, height: height || options.height });
+      // 只取观测宽度;高度恒用 options.height,绝不把观测高反喂画布(T16 诊断结论 2)。
+      // 否则 root 外高 → 画布 → root 高的回环会让 ResizeObserver 无界增长。
+      // 尺寸变化走 setSize,绝不重建(uplot-react 反例 3)。容器宽为 0 时退回选项初值。
+      const { width } = entry.contentRect;
+      plot.setSize({ width: width || options.width, height: options.height });
     });
     ro.observe(root);
 
@@ -60,5 +62,7 @@ export function TimeSeriesChart({ frame, options, className }: TimeSeriesChartPr
     plotRef.current?.setData(toUplotData(frame));
   }, [frame]);
 
-  return <div ref={rootRef} className={className} />;
+  // root 用固定 CSS height(非 minHeight),从源头掐断「外高反喂画布」的回环:
+  // 容器高恒等于 options.height,ResizeObserver 观测到的高度不再随画布增长(T16)。
+  return <div ref={rootRef} className={className} style={{ height: options.height }} />;
 }

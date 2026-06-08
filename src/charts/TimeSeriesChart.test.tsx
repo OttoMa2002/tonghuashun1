@@ -83,7 +83,7 @@ describe('TimeSeriesChart 生命周期', () => {
     expect(spies.setData).toHaveBeenCalledTimes(1); // frame 引用未变
   });
 
-  it('resize 触发 setSize 而非重建实例', () => {
+  it('resize 触发 setSize 而非重建实例,width 跟随容器、height 恒用选项', () => {
     render(<TimeSeriesChart frame={frame(3)} options={OPTIONS} />);
     expect(observers.length).toBe(1);
 
@@ -91,12 +91,33 @@ describe('TimeSeriesChart 生命周期', () => {
       observers[0].cb([{ contentRect: { width: 800, height: 400 } }]);
     });
 
-    expect(spies.setSize).toHaveBeenCalledWith({ width: 800, height: 400 });
+    // width 跟随容器(800);height 不取观测值(400),恒用 options.height(300)。
+    expect(spies.setSize).toHaveBeenCalledWith({ width: 800, height: 300 });
     expect(spies.ctor).toHaveBeenCalledTimes(1); // 未重建
     expect(spies.destroy).not.toHaveBeenCalled();
   });
 
-  it('容器尺寸为 0 时 setSize 退回选项初值', () => {
+  it('观测高递增时 setSize 的 height 恒等于 options.height(不随观测高增长)', () => {
+    render(<TimeSeriesChart frame={frame(3)} options={OPTIONS} />);
+
+    // 模拟 ResizeObserver 无界增长场景:contentRect.height 逐次递增。
+    const observedHeights = [300, 360, 600, 1200];
+    act(() => {
+      for (const h of observedHeights) {
+        observers[0].cb([{ contentRect: { width: 800, height: h } }]);
+      }
+    });
+
+    // 每次 setSize 的 height 实参都必须是 options.height(300),width 跟随容器(800)。
+    for (const call of spies.setSize.mock.calls) {
+      expect(call[0]).toEqual({ width: 800, height: 300 });
+    }
+    expect(spies.setSize).toHaveBeenCalledTimes(observedHeights.length);
+    expect(spies.ctor).toHaveBeenCalledTimes(1); // 全程未重建
+    expect(spies.destroy).not.toHaveBeenCalled();
+  });
+
+  it('容器宽为 0 时 setSize 宽退回选项初值,高恒用选项', () => {
     render(<TimeSeriesChart frame={frame(3)} options={OPTIONS} />);
     act(() => {
       observers[0].cb([{ contentRect: { width: 0, height: 0 } }]);

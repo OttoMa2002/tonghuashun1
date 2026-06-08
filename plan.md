@@ -28,6 +28,7 @@
 | T13 | components:虚拟滚动指标表格 | T08 | done |
 | T14 | MCP 渲染验证(2h 时间盒) | T12 | done |
 | T15 | worker:rate 查询管线接入 | T05, T07 | done |
+| T16 | 修复图表 ResizeObserver 无界增长(bug fix) | T10, T12 | done |
 
 ## 任务卡片
 
@@ -216,3 +217,17 @@ DoD:
 - 与 generateSeries + queryRange 的集成测试(端到端产出 rate frame)
 - rate 求值只在 Worker(主线程无 rate 代码,沿用 rule 3)
 验证:`pnpm gate`
+
+### T16 修复图表 ResizeObserver 无界增长(bug fix)
+
+依赖:T10, T12
+引用:诊断结论 2;src/charts/CLAUDE.md 规则 2;uplot-react skill
+范围:TimeSeriesChart 的 ResizeObserver 不再把 root 外高反喂给画布高——
+resize 只取 width,height 恒用 options.height;并给 root 固定高度(CSS height,
+非 minHeight)。遵守"走 setSize 不重建"。
+DoD:
+- 模拟 ResizeObserver 多次回调且 contentRect.height 递增时,setSize 的 height
+  实参恒等于 options.height(不随观测高增长)—— 单测断言
+- setSize 的 width 跟随容器、实例不重建(沿用 T10 spy)
+- T10/T11/T12 现有测试无回归
+验证:pnpm gate
