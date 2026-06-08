@@ -6,8 +6,9 @@
 // 真实部署时,此处即 `fetch('/api/query_range', { signal })` —— 调用点不变,只换实现。
 
 import type { FaultInjector } from '../mock/fault';
+import { seriesMatchesSelector, type MockDataset } from '../mock/query';
 
-import type { QueryExecPayload, QueryRangeParams, QueryRangeResponse } from '../contract';
+import type { MetricType, QueryExecPayload, QueryRangeParams, QueryRangeResponse, Selector } from '../contract';
 
 /**
  * 取数函数:给定查询指令(+ 取消信号)返回 MatrixResponse / ErrorResponse。
@@ -31,4 +32,20 @@ function toQueryRangeParams(payload: QueryExecPayload): QueryRangeParams {
  */
 export function createMockSource(injector: FaultInjector): QuerySource {
   return (payload) => injector.query(toQueryRangeParams(payload));
+}
+
+/**
+ * Metric-type 解析 seam(ADR-0010):返回 selector 命中的各序列声明类型。
+ *
+ * 为什么需要独立 seam:range 查询的 MatrixResponse(契约 §2)刻意不携带 type(忠实 Prometheus
+ * range query 线格式),而 rate 校验「命中非 counter → bad_request」需要类型元数据。类型是独立于
+ * range 数据的元信息(对照 Prometheus 的 /api/v1/metadata),故以独立 seam 暴露,不污染 MatrixResponse。
+ * 求值仍只发生在 Worker(CLAUDE.md 硬约束 3);MVP 由进程内 dataset 直读,真实部署即换为 metadata 取数。
+ */
+export type MetricTypeResolver = (selector: Selector) => MetricType[];
+
+/** 进程内 mock 的 metric-type 解析:复用 mock 的选择器匹配语义,读取声明类型(GeneratedSeries.metric.type)。 */
+export function createMockMetricTypeResolver(dataset: MockDataset): MetricTypeResolver {
+  return (selector) =>
+    dataset.filter((series) => seriesMatchesSelector(series, selector)).map((series) => series.metric.type);
 }

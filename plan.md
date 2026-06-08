@@ -27,7 +27,7 @@
 | T12 | pages:million-points raw 演示 | T05, T10 | done |
 | T13 | components:虚拟滚动指标表格 | T08 | done |
 | T14 | MCP 渲染验证(2h 时间盒) | T12 | done |
-| T15 | worker:rate 查询管线接入 | T05, T07 | todo |
+| T15 | worker:rate 查询管线接入 | T05, T07 | done |
 
 ## 任务卡片
 

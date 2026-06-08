@@ -11,8 +11,11 @@ import type {
   WorkerToMainMessage,
 } from '../contract';
 
+import { createFaultInjector } from '../mock/fault';
+import { generateSeries } from '../mock/generator';
+
 import { createQueryHandler } from './handler';
-import type { QuerySource } from './source';
+import { createMockMetricTypeResolver, createMockSource, type MetricTypeResolver, type QuerySource } from './source';
 
 function exec(overrides: Partial<QueryExecMessage['payload']> = {}): QueryExecMessage {
   return {
@@ -31,10 +34,11 @@ const success: QueryRangeResponse = {
   data: { result: [{ metric: { name: 'm', labels: { job: 'x' } }, values: [[0, 1], [50, 2], [100, 3]] }] },
 };
 
-function setup(source: QuerySource, now?: () => number) {
+function setup(source: QuerySource, now?: () => number, resolveSeriesTypes?: MetricTypeResolver) {
   const posts: Array<{ message: WorkerToMainMessage; transfer: ArrayBuffer[] }> = [];
   const handler = createQueryHandler({
     source,
+    resolveSeriesTypes,
     post: (message, transfer) => posts.push({ message, transfer }),
     now,
   });
@@ -124,5 +128,130 @@ describe('createQueryHandler', () => {
     await handler.handle(cancel('nope'));
     expect(posts).toHaveLength(0);
     expect(source).not.toHaveBeenCalled();
+  });
+});
+
+describe('createQueryHandler — rate 查询路径(T15 / ADR-0010)', () => {
+  function rateExec(overrides: Partial<QueryExecMessage['payload']> = {}): QueryExecMessage {
+    return {
+      id: 'env-r',
+      type: 'query.exec',
+      payload: {
+        queryId: 'qr',
+        selector: { name: 'reqs' },
+        startMillis: 30_000,
+        endMillis: 60_000,
+        stepMillis: 15_000,
+        rate: { windowMillis: 30_000 },
+        ...overrides,
+      },
+    };
+  }
+
+  it('rate 无 stepMillis → bad_request(回执 kind=http,沿用既定 bad_request→http 映射),不取数', async () => {
+    const source = vi.fn<QuerySource>(() => Promise.resolve(success));
+    const resolver: MetricTypeResolver = () => ['counter'];
+    const { handler, posts } = setup(source, undefined, resolver);
+
+    await handler.handle(rateExec({ stepMillis: undefined }));
+
+    expect(posts).toHaveLength(1);
+    if (posts[0].message.type !== 'query.error') throw new Error('unreachable');
+    expect(posts[0].message.payload.kind).toBe('http');
+    expect(posts[0].message.payload.message).toContain('stepMillis');
+    expect(source).not.toHaveBeenCalled(); // 校验先行,未取数
+  });
+
+  it('rate 命中非 counter(gauge)→ bad_request(kind=http),不取数', async () => {
+    const source = vi.fn<QuerySource>(() => Promise.resolve(success));
+    const resolver: MetricTypeResolver = () => ['gauge'];
+    const { handler, posts } = setup(source, undefined, resolver);
+
+    await handler.handle(rateExec());
+
+    expect(posts).toHaveLength(1);
+    if (posts[0].message.type !== 'query.error') throw new Error('unreachable');
+    expect(posts[0].message.payload.kind).toBe('http');
+    expect(posts[0].message.payload.message).toContain('counter');
+    expect(source).not.toHaveBeenCalled();
+  });
+
+  it('rate 命中混合(counter + gauge)→ bad_request(任一非 counter 即拒)', async () => {
+    const resolver: MetricTypeResolver = () => ['counter', 'gauge'];
+    const { handler, posts } = setup(() => Promise.resolve(success), undefined, resolver);
+    await handler.handle(rateExec());
+    if (posts[0].message.type !== 'query.error') throw new Error('unreachable');
+    expect(posts[0].message.payload.kind).toBe('http');
+  });
+
+  it('rate 底层取数走 [start-window, end] 的 raw 模式(无 step、无 rate 字段下发 source)', async () => {
+    const source = vi.fn<QuerySource>(() => Promise.resolve(success));
+    const resolver: MetricTypeResolver = () => ['counter'];
+    const { handler } = setup(source, undefined, resolver);
+
+    await handler.handle(rateExec());
+
+    expect(source).toHaveBeenCalledTimes(1);
+    const underlying = source.mock.calls[0][0];
+    expect(underlying.startMillis).toBe(30_000 - 30_000); // start - window
+    expect(underlying.endMillis).toBe(60_000);
+    expect(underlying.stepMillis).toBeUndefined(); // raw 底层取数
+    expect(underlying.rate).toBeUndefined();
+  });
+
+  it('集成:generateSeries + queryRange 端到端产出 rate frame(每点 = trailing counterRate)', async () => {
+    // counter:每 15s 固定增 10([10,10] 增量,prng 不影响),栅格 0..120000 → 值 0,10,...,80。
+    const dataset = generateSeries(
+      { name: 'reqs', type: 'counter', labelSets: [{ job: 'api' }], stepIncrement: [10, 10] },
+      { startMillis: 0, endMillis: 120_000, stepMillis: 15_000 },
+      7,
+    );
+    const source = createMockSource(createFaultInjector(dataset));
+    const resolver = createMockMetricTypeResolver(dataset);
+    const { handler, posts } = setup(source, undefined, resolver);
+
+    await handler.handle(
+      rateExec({
+        queryId: 'qe',
+        selector: { name: 'reqs', labels: { job: 'api' } },
+        startMillis: 60_000,
+        endMillis: 120_000,
+        stepMillis: 30_000,
+        rate: { windowMillis: 60_000 },
+      }),
+    );
+
+    expect(posts).toHaveLength(1);
+    const msg = posts[0].message;
+    expect(msg.type).toBe('query.result');
+    if (msg.type !== 'query.result') throw new Error('unreachable');
+    const { frame } = msg.payload;
+    // 栅格点 60000,90000,120000;每窗 5 样本、增量 40、时长 60s → rate = 40/60。
+    expect(Array.from(frame.ts)).toEqual([60_000, 90_000, 120_000]);
+    expect(frame.series).toHaveLength(1);
+    expect(frame.series[0].key).toBe('reqs{job=api}');
+    for (const v of frame.series[0].values) {
+      expect(v).toBeCloseTo(40 / 60, 9);
+    }
+    // 大数组经 Transferable 移交:ts buffer + 1 series values buffer。
+    expect(posts[0].transfer).toHaveLength(2);
+    expect(posts[0].transfer[0]).toBe(frame.ts.buffer);
+  });
+
+  it('集成:selector 命中空 → 成功空 rate frame(无命中即无非 counter,不报错)', async () => {
+    const dataset = generateSeries(
+      { name: 'reqs', type: 'counter', labelSets: [{ job: 'api' }], stepIncrement: [10, 10] },
+      { startMillis: 0, endMillis: 120_000, stepMillis: 15_000 },
+      7,
+    );
+    const source = createMockSource(createFaultInjector(dataset));
+    const resolver = createMockMetricTypeResolver(dataset);
+    const { handler, posts } = setup(source, undefined, resolver);
+
+    await handler.handle(rateExec({ selector: { name: 'nonexistent' } }));
+
+    expect(posts).toHaveLength(1);
+    if (posts[0].message.type !== 'query.result') throw new Error('unreachable');
+    expect(posts[0].message.payload.frame.series).toHaveLength(0);
   });
 });

@@ -13,7 +13,7 @@ import type { MainToWorkerMessage } from '../contract';
 
 import { createQueryHandler } from './handler';
 import { buildMillionDataset } from './million-dataset';
-import { createMockSource } from './source';
+import { createMockMetricTypeResolver, createMockSource } from './source';
 
 // tsconfig 同时含 DOM 与 WebWorker lib,self 的全局类型有歧义;经 unknown 显式窄化为 Worker 作用域。
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
@@ -35,10 +35,14 @@ function buildPlaceholderDataset(): MockDataset {
   return [...counter, ...gauge, ...buildMillionDataset()];
 }
 
-const injector = createFaultInjector(buildPlaceholderDataset());
+const dataset = buildPlaceholderDataset();
+const injector = createFaultInjector(dataset);
 const source = createMockSource(injector);
+// rate 校验需 metric-type:range 数据不带 type,故从同一 dataset 派生 type 解析(ADR-0010)。
+const resolveSeriesTypes = createMockMetricTypeResolver(dataset);
 const handler = createQueryHandler({
   source,
+  resolveSeriesTypes,
   post: (message, transfer) => ctx.postMessage(message, transfer),
 });
 

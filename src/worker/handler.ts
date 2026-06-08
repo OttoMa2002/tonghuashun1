@@ -6,6 +6,7 @@
 //       query.cancel → abort 对应 in-flight,取数返回后若已取消则发 query.error(kind:'aborted')。
 
 import type {
+  ColumnarFrame,
   Envelope,
   MainToWorkerMessage,
   QueryErrorKind,
@@ -16,7 +17,8 @@ import type {
 
 import { FrameParseError, countRawPoints, matrixToColumnar } from './transform';
 import { collectTransferables } from './transferables';
-import type { QuerySource } from './source';
+import { computeRateFrame } from './rate-pipeline';
+import type { MetricTypeResolver, QuerySource } from './source';
 
 /** post 回调:Worker 入口绑定到 self.postMessage(message, transfer)。 */
 export type PostReceipt = (message: WorkerToMainMessage, transfer: ArrayBuffer[]) => void;
@@ -24,6 +26,12 @@ export type PostReceipt = (message: WorkerToMainMessage, transfer: ArrayBuffer[]
 export interface QueryHandlerDeps {
   source: QuerySource;
   post: PostReceipt;
+  /**
+   * metric-type 解析(ADR-0010):rate 校验「命中非 counter → bad_request」所需。
+   * range 数据(MatrixResponse,§2)不携带 type,类型是独立元信息,故经独立 seam 注入。
+   * 省略时 rate 的非 counter 校验视作无命中(不阻断);Worker 接线(index.ts)必接入,rate 单测显式注入。
+   */
+  resolveSeriesTypes?: MetricTypeResolver;
   /** 计时源,默认 performance.now;测试可注入以断言 elapsedMs。 */
   now?: () => number;
 }
@@ -67,6 +75,25 @@ export function createQueryHandler(deps: QueryHandlerDeps): QueryHandler {
     deps.post(envelope, []);
   }
 
+  /**
+   * 发 query.result:把列式帧 + meta 装信封,大数组经 Transferable 移交(§5、§6)。
+   * meta.rawPointCount 取底层 matrix 的样本总数(rate 路径即 [start-window, end] 区间内的底层样本)。
+   */
+  function emitResult(
+    id: string,
+    queryId: string,
+    frame: ColumnarFrame,
+    rawPointCount: number,
+    elapsedMs: number,
+  ): void {
+    const resultEnvelope: WorkerToMainMessage = {
+      id,
+      type: 'query.result',
+      payload: { queryId, frame, meta: { rawPointCount, elapsedMs } },
+    };
+    deps.post(resultEnvelope, collectTransferables(frame));
+  }
+
   async function handleExec(message: QueryExecMessage): Promise<void> {
     const { id } = message;
     const payload: QueryExecPayload = message.payload;
@@ -76,6 +103,11 @@ export function createQueryHandler(deps: QueryHandlerDeps): QueryHandler {
     const startedAt = now();
 
     try {
+      if (payload.rate) {
+        await handleRateExec(id, payload, controller, startedAt);
+        return;
+      }
+
       const response = await deps.source(payload, controller.signal);
 
       // 取数返回后若已被 cancel:不发 result,改发 aborted(每查询仍只一个回执)。
@@ -90,22 +122,72 @@ export function createQueryHandler(deps: QueryHandlerDeps): QueryHandler {
       }
 
       const frame = matrixToColumnar(response);
-      const elapsedMs = now() - startedAt;
-      const resultEnvelope: WorkerToMainMessage = {
-        id,
-        type: 'query.result',
-        payload: {
-          queryId,
-          frame,
-          meta: { rawPointCount: countRawPoints(response), elapsedMs },
-        },
-      };
-      deps.post(resultEnvelope, collectTransferables(frame));
+      emitResult(id, queryId, frame, countRawPoints(response), now() - startedAt);
     } catch (err) {
       emitError(id, queryId, kindOfThrown(err), messageOf(err));
     } finally {
       inFlight.delete(queryId);
     }
+  }
+
+  /**
+   * rate 查询路径(ADR-0010、§3 栅格 rate)。校验 → 取 [start-window, end] 底层样本 → 栅格逐点 counterRate。
+   *
+   * 校验(均为 bad_request;§5 query.error kind 无 bad_request,沿用 errorKindOf 既定映射 bad_request→'http',
+   * 与 handler 对 mock bad_request 的处置一致):
+   *  - 无 stepMillis:rate 须 stepped(§5、ADR-0010)
+   *  - 命中非 counter:rate 仅对 counter 有效(ADR-0010);类型经 resolveSeriesTypes 解析(range 数据不带 type)
+   * 求值在 computeRateFrame(本目录),底层取数仍走 source(fetch 只在 Worker,硬约束 4)。
+   */
+  async function handleRateExec(
+    id: string,
+    payload: QueryExecPayload,
+    controller: AbortController,
+    startedAt: number,
+  ): Promise<void> {
+    const { queryId } = payload;
+    const rate = payload.rate;
+    if (!rate) {
+      return; // 调用方已保证 payload.rate 存在;此分支仅为窄化类型。
+    }
+
+    if (payload.stepMillis === undefined) {
+      emitError(id, queryId, errorKindOf('bad_request'), 'rate 请求须同时带 stepMillis(§5、ADR-0010)');
+      return;
+    }
+
+    const types = deps.resolveSeriesTypes?.(payload.selector) ?? [];
+    if (types.some((type) => type !== 'counter')) {
+      emitError(id, queryId, errorKindOf('bad_request'), 'rate 仅对 counter 序列有效,selector 命中非 counter(ADR-0010)');
+      return;
+    }
+
+    // 底层取数:raw 模式([start-window, end] 内全部样本);内部有界回看,与「raw 仅 million-points 页」正交(ADR-0010)。
+    const underlyingParams: QueryExecPayload = {
+      ...payload,
+      startMillis: payload.startMillis - rate.windowMillis,
+      stepMillis: undefined,
+      rate: undefined,
+      downsample: undefined,
+    };
+    const response = await deps.source(underlyingParams, controller.signal);
+
+    if (controller.signal.aborted) {
+      emitError(id, queryId, 'aborted', `queryId=${queryId} 已取消`);
+      return;
+    }
+    if (response.status === 'error') {
+      emitError(id, queryId, errorKindOf(response.errorType), response.message);
+      return;
+    }
+
+    const frame = computeRateFrame(response, {
+      startMillis: payload.startMillis,
+      endMillis: payload.endMillis,
+      stepMillis: payload.stepMillis,
+      windowMillis: rate.windowMillis,
+    });
+    emitResult(id, queryId, frame, countRawPoints(response), now() - startedAt);
   }
 
   function handleCancel(queryId: string): void {

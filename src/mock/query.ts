@@ -24,8 +24,12 @@ import type {
  */
 export type MockDataset = readonly GeneratedSeries[];
 
-/** 选择器匹配:name 等值,且 selector.labels 每一项都在序列 labels 中等值命中(§2,仅 =)。 */
-function matches(series: GeneratedSeries, selector: Selector): boolean {
+/**
+ * 选择器匹配:name 等值,且 selector.labels 每一项都在序列 labels 中等值命中(§2,仅 =)。
+ * 导出供 Worker 侧 metric-type 解析复用(共享匹配语义,防止各写一份导致漂移,呼应 seriesKey 的共享约束);
+ * 仅暴露匹配谓词,不构成 mock 的「旁路输出格式」(src/mock/CLAUDE.md 规则 6 约束的是 MatrixResponse/ErrorResponse 输出)。
+ */
+export function seriesMatchesSelector(series: GeneratedSeries, selector: Selector): boolean {
   if (series.metric.name !== selector.name) {
     return false;
   }
@@ -123,7 +127,7 @@ export function queryRange(dataset: MockDataset, params: QueryRangeParams): Quer
 
   const result: MatrixSeries[] = [];
   for (const series of dataset) {
-    if (!matches(series, selector)) {
+    if (!seriesMatchesSelector(series, selector)) {
       continue;
     }
     const values = isStepped
