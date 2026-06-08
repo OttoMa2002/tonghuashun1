@@ -93,7 +93,7 @@ type ColumnarFrame = {
 **消费方注记(审定·§8-1 / §8-3)** —— charts 层(T10)消费 ColumnarFrame 的两条强制规则:
 
 - **时间单位解释**:`ts` 是毫秒。uPlot 默认按秒解释 x,charts 层须以**自定义日期格式化器**(`fmtDate` / 轴 `values` / cursor 值格式化器,把数值当 ms)解释,**禁止对 `ts` 数组做 ÷1000 换算**——对 1M 数组逐元素换算属主线程数据加工(违反 CLAUDE.md 硬约束 3),且产生拷贝、抵消 Transferable。uPlot 绘制只用裸数值,"秒"假设仅影响日期文本,可被 formatter 完全覆盖。
-- **间隙表示**:`NaN` 是 typed array 中唯一可表达空点的哨兵(`Float64Array` 存不了 `null`——会被强制为 0,画成到 0 的连线)。依赖 uPlot 对 typed array + `NaN` 的间隙处理,并须关闭 `spanGaps`(否则跨空点连线)。**此假设由 T10 首个验证项实测**;结论无论真假都回写本节(经人工)。降级方案(成立性存疑时启用):charts 适配层将 `NaN` 转 `null` 普通数组——有一次主线程拷贝且丢失 Transferable 收益,故仅作降级、非默认路径,届时凭基准决定。
+- **间隙表示**:经 T10 实测证伪 NaN 假设——uPlot 哨兵为 null,NaN 会被画穿不成间隙,且 Float64Array 存不了 null。默认路径:charts 适配层(toUplotData)将含间隙序列转为 (number|null)[] 普通数组,NaN→null。无间隙序列保留 Float64Array 零拷贝(raw 百万点路径通常无间隙,Transferable 收益不受影响)。spanGaps 必须为 false。
 
 ## 7. 性能预算
 
@@ -120,3 +120,4 @@ type ColumnarFrame = {
 | 3 | NaN 间隙表示路径 | NaN 为主哨兵(typed array 唯一可行)+ 关 `spanGaps`;成立性由 T10 首验,保留 NaN→null 降级 | §6 消费方注记 |
 | 4 | 性能预算逐项 | 整表作为初始预算采纳(可凭 bench 修订);风险项为 raw 1M ≤500ms,留 T05 bench 确认 | §7 |
 | 缺口 | 乱序样本解析侧处置 | (a) Worker 按 `tsMillis` 升序排序后列式化,对下游透明 | §4 |
+第 3 行结论(T10):NaN 假设证伪,null 普通数组转为默认路径,降级分支转正
