@@ -12,3 +12,6 @@ export { DataLayerProvider, useDataLayer } from './context';
 
 export type { MetricQuerySpec, MetricQueryState } from './useMetricQuery';
 export { useMetricQuery } from './useMetricQuery';
+
+export type { Poller, PollerOptions, VisibilitySource } from './poller';
+export { createPoller, documentVisibility } from './poller';
