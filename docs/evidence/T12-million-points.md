@@ -25,8 +25,8 @@
   后量到 paint 完成,含 uPlot 首次构造 + 绘制。
 - **主线程最长任务**:longtask PerformanceObserver,取 duration 最大值;浏览器可用,jsdom/旧环境降级为 —。
 
-## 截图(待 T14 捕获)
+## 截图(已由 T14 捕获)
 
-本任务在无浏览器的无人值守环境执行,无法捕获真实渲染截图。million-points 页正是 ADR-0007 / T14
-chrome-devtools MCP 渲染验证的标的:由 T14 打开本页、截图断言非空白、读取上述面板耗时对比预算,
-截图与耗时归档至本目录。本任务交付页面与自显耗时面板,作为 T14 的断言对象。
+T14 已完成捕获(ADR-0007 降级分支,CDP 驱动系统 Chrome):截图 `docs/evidence/T14-million-points.png`
+断言非空白,耗时面板取值对比预算见 `docs/evidence/T14-render-verification.md`
+(Worker 转换 319.7ms ≤500、首帧渲染 18.0ms ≤1000)。本任务交付的页面与自显耗时面板即该验证的断言对象。
