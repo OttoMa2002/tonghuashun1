@@ -1,4 +1,6 @@
-// 脚手架占位页。真实页面在 T11(dashboard)、T12(million-points)交付。
+import { MillionPointsPage } from './pages/MillionPointsPage';
+
+// MVP 入口:当前挂载 million-points raw 演示页(T12)。dashboard(T11)就绪后在此分流路由。
 export function App(): JSX.Element {
-  return <h1>高性能数据分析平台 — 脚手架就绪</h1>;
+  return <MillionPointsPage />;
 }

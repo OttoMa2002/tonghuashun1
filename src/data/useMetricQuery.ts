@@ -4,7 +4,7 @@
 
 import { useEffect, useId, useReducer, useSyncExternalStore } from 'react';
 
-import type { ColumnarFrame, QueryErrorPayload, Selector } from '../contract';
+import type { ColumnarFrame, QueryErrorPayload, QueryResultPayload, Selector } from '../contract';
 
 import { useDataLayer } from './context';
 
@@ -19,26 +19,31 @@ export interface MetricQuerySpec {
   downsample?: { targetPoints: number };
 }
 
+/** Worker 回执 meta(契约 §5):rawPointCount / elapsedMs（转换在 Worker 完成的耗时证据）。 */
+type ResultMeta = QueryResultPayload['meta'];
+
 export interface MetricQueryState {
   loading: boolean;
   error: QueryErrorPayload | null;
   data: ColumnarFrame | null;
+  /** 最近一次成功回执的 meta；loading/error 时为 null。供 million-points 页展示 Worker 转换耗时。 */
+  meta: ResultMeta | null;
 }
 
-type Phase = { loading: boolean; error: QueryErrorPayload | null };
+type Phase = { loading: boolean; error: QueryErrorPayload | null; meta: ResultMeta | null };
 type PhaseAction =
   | { kind: 'load' }
-  | { kind: 'success' }
+  | { kind: 'success'; meta: ResultMeta }
   | { kind: 'error'; error: QueryErrorPayload };
 
 function phaseReducer(_prev: Phase, action: PhaseAction): Phase {
   switch (action.kind) {
     case 'load':
-      return { loading: true, error: null };
+      return { loading: true, error: null, meta: null };
     case 'success':
-      return { loading: false, error: null };
+      return { loading: false, error: null, meta: action.meta };
     case 'error':
-      return { loading: false, error: action.error };
+      return { loading: false, error: action.error, meta: null };
   }
 }
 
@@ -49,7 +54,7 @@ function phaseReducer(_prev: Phase, action: PhaseAction): Phase {
 export function useMetricQuery(spec: MetricQuerySpec): MetricQueryState {
   const { client, store } = useDataLayer();
   const queryId = useId();
-  const [phase, dispatch] = useReducer(phaseReducer, { loading: true, error: null });
+  const [phase, dispatch] = useReducer(phaseReducer, { loading: true, error: null, meta: null });
 
   // spec 是对象,引用不稳定;以序列化值作为 effect 依赖,避免每次渲染重发。
   const specKey = JSON.stringify(spec);
@@ -66,7 +71,7 @@ export function useMetricQuery(spec: MetricQuerySpec): MetricQueryState {
       }
       if (receipt.type === 'query.result') {
         store.set(queryId, receipt.payload.frame);
-        dispatch({ kind: 'success' });
+        dispatch({ kind: 'success', meta: receipt.payload.meta });
       } else {
         dispatch({ kind: 'error', error: receipt.payload });
       }
@@ -82,5 +87,5 @@ export function useMetricQuery(spec: MetricQuerySpec): MetricQueryState {
 
   const data = useSyncExternalStore(store.subscribe, () => store.get(queryId) ?? null);
 
-  return { loading: phase.loading, error: phase.error, data };
+  return { loading: phase.loading, error: phase.error, data, meta: phase.meta };
 }

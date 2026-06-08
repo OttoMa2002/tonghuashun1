@@ -12,6 +12,7 @@ import type { MockDataset } from '../mock/query';
 import type { MainToWorkerMessage } from '../contract';
 
 import { createQueryHandler } from './handler';
+import { buildMillionDataset } from './million-dataset';
 import { createMockSource } from './source';
 
 // tsconfig 同时含 DOM 与 WebWorker lib,self 的全局类型有歧义;经 unknown 显式窄化为 Worker 作用域。
@@ -30,7 +31,8 @@ function buildPlaceholderDataset(): MockDataset {
     grid,
     2,
   );
-  return [...counter, ...gauge];
+  // million-points 演示(T12):追加一条百万点 gauge 序列,供 raw 整窗查询取回(ADR-0004)。
+  return [...counter, ...gauge, ...buildMillionDataset()];
 }
 
 const injector = createFaultInjector(buildPlaceholderDataset());
