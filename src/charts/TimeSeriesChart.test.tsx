@@ -125,6 +125,33 @@ describe('TimeSeriesChart 生命周期', () => {
     expect(spies.setSize).toHaveBeenCalledWith({ width: 600, height: 300 });
   });
 
+  it('T17:绘制耗时回调同步括住 new uPlot —— 挂载即报 init,frame 变更报 update', () => {
+    const measured: Array<{ phase: 'init' | 'update'; durationMs: number }> = [];
+    const onDrawMeasured = vi.fn((t: { phase: 'init' | 'update'; durationMs: number }) => {
+      measured.push(t);
+    });
+
+    const { rerender } = render(
+      <TimeSeriesChart frame={frame(3)} options={OPTIONS} onDrawMeasured={onDrawMeasured} />,
+    );
+
+    // 同步边界佐证:render 返回(effect 已 flush,未经任何 rAF)时 init 已上报,
+    // 且发生在 ctor 调用之后 —— 证明 performance.now() 括住的是真实同步绘制点,而非 rAF 代理。
+    expect(spies.ctor).toHaveBeenCalledTimes(1);
+    const initTimings = measured.filter((t) => t.phase === 'init');
+    expect(initTimings).toHaveLength(1);
+    expect(Number.isFinite(initTimings[0].durationMs)).toBe(true);
+    expect(initTimings[0].durationMs).toBeGreaterThanOrEqual(0);
+
+    // frame 变更:走 setData 重绘,上报 update(实例不重建)。
+    rerender(<TimeSeriesChart frame={frame(4)} options={OPTIONS} onDrawMeasured={onDrawMeasured} />);
+    expect(spies.ctor).toHaveBeenCalledTimes(1);
+    const updateTimings = measured.filter((t) => t.phase === 'update');
+    // 挂载 setData(1)+ 一次 frame 变更(1)= 2 次 update 上报。
+    expect(updateTimings).toHaveLength(2);
+    expect(Number.isFinite(updateTimings[0].durationMs)).toBe(true);
+  });
+
   it('卸载销毁实例并断开 ResizeObserver,无残留', () => {
     const { unmount } = render(<TimeSeriesChart frame={frame(3)} options={OPTIONS} />);
     const ro = observers[0];

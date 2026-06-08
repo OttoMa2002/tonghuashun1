@@ -5,10 +5,11 @@
 // 消费 Worker 回执的列式帧、把耗时显示出来。fetch/解析/列式化全在 Worker(architecture.md §4)。
 // 自显的渲染耗时是 T14 MCP 断言对象。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { createLineChartOptions, TimeSeriesChart } from '../charts';
+import type { ChartDrawTiming } from '../charts';
 import {
   createColumnarStore,
   createWorkerClient,
@@ -88,32 +89,14 @@ export function MillionPointsView(): ReactElement {
     [],
   );
 
-  // 首帧渲染耗时(setData→paint 代理):data 首次到达即记起点(render 内,先于子组件 commit/setData),
-  // 双 rAF 后量到 paint 完成。含 uPlot 首次构造 + 绘制的开销。
-  const renderStartRef = useRef<number | null>(null);
-  if (data && renderStartRef.current === null) {
-    renderStartRef.current = performance.now();
-  }
+  // 首帧绘制耗时(T17):由 TimeSeriesChart 在同步 new uPlot 处用 performance.now() 实测后回调上报,
+  // 取首次 init 绘制(后续 update 重绘不覆盖)。不再用双 rAF 代理——那会错过子组件 effect 里的真实绘制。
   const [firstPaintMs, setFirstPaintMs] = useState<number | null>(null);
-
-  useEffect(() => {
-    const startedAt = renderStartRef.current;
-    if (!data || startedAt === null || firstPaintMs !== null) {
-      return;
+  const handleDrawMeasured = useCallback((timing: ChartDrawTiming) => {
+    if (timing.phase === 'init') {
+      setFirstPaintMs((prev) => (prev === null ? timing.durationMs : prev));
     }
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        setFirstPaintMs(performance.now() - startedAt);
-      });
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      if (raf2) {
-        cancelAnimationFrame(raf2);
-      }
-    };
-  }, [data, firstPaintMs]);
+  }, []);
 
   // 主线程长任务观测:转换在 Worker,主线程应无 >50ms 长任务(契约 §7 运行时证据)。
   // longtask API 在浏览器可用;jsdom/旧环境无则降级为不可观测(显示 —),不影响其它断言。
@@ -169,7 +152,7 @@ export function MillionPointsView(): ReactElement {
         />
         <MetricRow
           testId="render-elapsed"
-          label="首帧渲染(setData→paint)"
+          label="首帧绘制(new uPlot 同步实测)"
           value={fmtMs(firstPaintMs)}
           budget={`≤ ${PERF_BUDGET.rawMillionFirstPaintMs} ms`}
           overBudget={firstPaintMs !== null && firstPaintMs > PERF_BUDGET.rawMillionFirstPaintMs}
@@ -189,7 +172,7 @@ export function MillionPointsView(): ReactElement {
             查询失败({error.kind}):{error.message}
           </p>
         ) : data ? (
-          <TimeSeriesChart frame={data} options={options} />
+          <TimeSeriesChart frame={data} options={options} onDrawMeasured={handleDrawMeasured} />
         ) : (
           <p style={{ color: '#64748b' }}>{loading ? '加载百万点中…' : '无数据'}</p>
         )}

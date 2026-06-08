@@ -29,7 +29,7 @@
 | T14 | MCP 渲染验证(2h 时间盒) | T12 | done |
 | T15 | worker:rate 查询管线接入 | T05, T07 | done |
 | T16 | 修复图表 ResizeObserver 无界增长(bug fix) | T10, T12 | done |
-
+| T17 | million-points 绘制耗时改为可信测量 | T12, T16 | done |
 ## 任务卡片
 
 ### T00 Harness bootstrap(人工监督)
@@ -230,4 +230,18 @@ DoD:
   实参恒等于 options.height(不随观测高增长)—— 单测断言
 - setSize 的 width 跟随容器、实例不重建(沿用 T10 spy)
 - T10/T11/T12 现有测试无回归
+验证:pnpm gate
+
+### T17 million-points 绘制耗时改为可信测量(measurement fix)
+
+依赖:T12, T16
+引用:诊断结论 1 注;src/charts、src/pages
+范围:现「首帧 setData→paint」双 rAF 代理错过子组件 passive effect 里的
+uPlot 绘制、「主线程最长任务」longtask 窗口对不齐显示 —,均不可信。改为在
+实际同步绘制点(new uPlot / setData)用 performance.now() 直接括住,经回调
+上报真实主线程同步绘制耗时。不改 worker/数据加工路径。
+DoD:
+- 页面自显绘制耗时来自同步 new uPlot/setData 的 performance.now() 区间,
+  覆盖真实绘制(测试/说明佐证测量边界)
+- 不改 worker/charts 数据加工路径
 验证:pnpm gate
