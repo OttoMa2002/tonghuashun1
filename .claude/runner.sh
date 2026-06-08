@@ -68,7 +68,7 @@ while :; do
   task_log="$LOGDIR/${task}-$(date +%Y%m%d-%H%M%S).log"
   prompt="执行 plan.md 的 $task,仅此一个任务,按 task-protocol skill 全流程执行(领取→实现→DoD→pnpm gate 绿灯→commit→更新状态)。"
   log "[runner] 调用 claude -p,输出 tee 到 $task_log"
-  claude -p "$prompt" 2>&1 | tee "$task_log"
+  claude -p --permission-mode bypassPermissions --verbose "$prompt" 2>&1 | tee "$task_log"
   claude_rc=${PIPESTATUS[0]}
 
   # 中断处理:claude -p 非零退出(额度耗尽 / 网络中断 / 执行内部错误)即停止整个循环,
