@@ -16,7 +16,7 @@
 | T01 | data-contract.md + 契约类型(人工审定) | T00 | done |
 | T02 | mock:时序生成器 | T01 | done |
 | T03 | mock:query_range 实现 | T02 | done |
-| T04 | mock:故障注入 | T03 | todo |
+| T04 | mock:故障注入 | T03 | done |
 | T05 | worker:消息协议骨架 + matrix→列式转换 | T01, T03 | todo |
 | T06 | worker:LTTB 降采样 | T05 | todo |
 | T07 | worker:counter rate 计算 | T05 | todo |
