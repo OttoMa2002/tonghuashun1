@@ -20,7 +20,7 @@
 | T05 | worker:消息协议骨架 + matrix→列式转换 | T01, T03 | done |
 | T06 | worker:LTTB 降采样 | T05 | done |
 | T07 | worker:counter rate 计算 | T05 | done |
-| T08 | data:列式 store + 查询 hooks | T05 | todo |
+| T08 | data:列式 store + 查询 hooks | T05 | done |
 | T09 | data:轮询调度器 | T04, T08 | todo |
 | T10 | charts:uPlot React 封装 | T01, T08 | todo |
 | T11 | pages:dashboard | T06, T07, T09, T10 | todo |
