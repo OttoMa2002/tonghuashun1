@@ -27,6 +27,7 @@
 | T12 | pages:million-points raw 演示 | T05, T10 | done |
 | T13 | components:虚拟滚动指标表格 | T08 | done |
 | T14 | MCP 渲染验证(2h 时间盒) | T12 | done |
+| T15 | worker:rate 查询管线接入 | T05, T07 | todo |
 
 ## 任务卡片
 
@@ -200,3 +201,18 @@ DoD(降级分支):
 - 验证方案文档(工具、断言项、预算引用)入 docs/
 - 人工验证留证(截图 + 耗时)入 docs/evidence/
 验证:两分支任一完成即视为 done,commit message 注明走的分支
+
+### T15 worker:rate 查询管线接入
+
+依赖:T05, T07
+引用:ADR-0010;data-contract.md §3 栅格 rate 序列、§5 query.exec;src/worker/CLAUDE.md
+范围:handler 识别 query.exec 的 rate 字段;按 ADR-0010 语义,内部取
+[start-windowMillis, end] 底层样本,每个栅格点调 counterRate 求 rate 序列,
+产出 rate ColumnarFrame。校验:rate 无 step → bad_request;rate 命中非 counter → bad_request。
+DoD:
+- rate 序列每点 = trailing 窗口 counterRate,单位 /秒,含重置处理,各有单测
+- 窗口内 <2 样本 → NaN(间隙)单测
+- 无 step / 非 counter 两种 bad_request 各有单测
+- 与 generateSeries + queryRange 的集成测试(端到端产出 rate frame)
+- rate 求值只在 Worker(主线程无 rate 代码,沿用 rule 3)
+验证:`pnpm gate`

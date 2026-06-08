@@ -41,4 +41,5 @@ export interface ErrorResponse {
   message: string;
 }
 
+
 export type QueryRangeResponse = MatrixResponse | ErrorResponse;

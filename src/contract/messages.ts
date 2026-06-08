@@ -21,6 +21,7 @@ export interface QueryExecPayload {
   stepMillis?: number;
   /** 渲染级降采样目标点数(LTTB,仅 Worker 内执行,ADR-0004)。 */
   downsample?: { targetPoints: number };
+  rate?: { windowMillis: number };
 }
 
 export interface QueryCancelPayload {

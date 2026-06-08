@@ -43,6 +43,13 @@ type ErrorResponse = { status: 'error'; errorType: 'timeout' | 'internal' | 'bad
 
 - **gauge**:直读绘制
 - **counter**:单调不减;值回落即视为重置。`rate(window)` 计算:窗口内相邻样本增量求和(重置处增量按新值计),除以窗口实际时长。不实现 Prometheus 的端点外推,简化已知且标注(面试可讲)
+栅格 rate 序列(query.exec 带 rate 时):
+- 锚定 Prometheus rate(v[window]) 的 range query 求值
+- 每个栅格点 t=start+k*step:rate(t)=counterRate([t-windowMillis, t]),单位 /秒
+- 含 counter 重置处理(复用 worker/rate.ts 的 counterRate)
+- 窗口内样本 <2 → NaN(间隙,关 spanGaps)
+- Worker 内部按 [start-windowMillis, end] 取底层样本求值;此有界回看与
+  "raw 仅 million-points"约束正交(ADR-0010)
 
 rate 只允许在 Worker 内计算(CLAUDE.md 硬约束 3)。
 
@@ -66,6 +73,8 @@ rate 只允许在 Worker 内计算(CLAUDE.md 硬约束 3)。
 主线程 → Worker:
 
 - `query.exec`:`{ queryId, selector, startMillis, endMillis, stepMillis?, downsample?: { targetPoints: number } }`
+- `rate?: { windowMillis: number }`:请求 counter rate 序列。带此字段时须同时带
+  stepMillis(否则 bad_request);仅对 counter 序列有效(非 counter → bad_request)。
 - `query.cancel`:`{ queryId }`
 
 Worker → 主线程:
