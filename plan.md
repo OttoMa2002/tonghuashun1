@@ -25,7 +25,7 @@
 | T10 | charts:uPlot React 封装 | T01, T08 | done |
 | T11 | pages:dashboard | T06, T07, T09, T10 | blocked |
 | T12 | pages:million-points raw 演示 | T05, T10 | done |
-| T13 | components:虚拟滚动指标表格 | T08 | todo |
+| T13 | components:虚拟滚动指标表格 | T08 | done |
 | T14 | MCP 渲染验证(2h 时间盒) | T12 | todo |
 
 ## 任务卡片
