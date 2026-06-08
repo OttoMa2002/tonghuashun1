@@ -112,7 +112,8 @@ type ColumnarFrame = {
 |---|---|---|
 | raw 1M 点:Worker 内 fetch + 解析 + 列式转换 | ≤ 500ms | T05 bench、T12 |
 | raw 1M 点:首帧渲染(setData 到 paint) | ≤ 1000ms | T12 自显耗时、T14 断言 |
-| 主线程单次长任务(转换不在主线程的证据) | ≤ 50ms | T12 |
+| 主线程数据加工(解析/转换/降采样/rate) | ≤50ms | 成立——实测 ≈0,全部在 Worker,Transferable 已验证(诊断结论 1) |
+| 1M 点 canvas 渲染(主线程固有) | 不设硬上限 | uPlot 主线程光栅化,非数据加工,Worker 卸载不掉;精确自测不可靠(rAF 代理 / 同步括号两次插桩均未对齐 uPlot 内部绘制时机,记为发现),真值以 DevTools 为准;接受为 raw 受控演示(ADR-0004)的固有成本,常规页走两级降采样规避 |
 | LTTB:1M → 2000 点(Worker 内) | ≤ 150ms | T06 bench |
 | stepped 端到端(720 点 × ≤10 series,无故障) | ≤ 200ms | T11 |
 | scrape_interval 默认 / 退避上限 | 15s / 2min | T09 |
