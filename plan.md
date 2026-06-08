@@ -18,7 +18,7 @@
 | T03 | mock:query_range 实现 | T02 | done |
 | T04 | mock:故障注入 | T03 | done |
 | T05 | worker:消息协议骨架 + matrix→列式转换 | T01, T03 | done |
-| T06 | worker:LTTB 降采样 | T05 | todo |
+| T06 | worker:LTTB 降采样 | T05 | done |
 | T07 | worker:counter rate 计算 | T05 | todo |
 | T08 | data:列式 store + 查询 hooks | T05 | todo |
 | T09 | data:轮询调度器 | T04, T08 | todo |
